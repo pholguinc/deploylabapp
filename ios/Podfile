@@ -5,7 +5,7 @@ require Pod::Executable.execute_command('node', ['-p',
     {paths: [process.argv[1]]},
   )', __dir__]).strip
 
-platform :ios, min_ios_version_supported
+platform :ios, '15.1'
 prepare_react_native_project!
 
 linkage = ENV['USE_FRAMEWORKS']
@@ -30,5 +30,16 @@ target 'deploylabapp' do
       :mac_catalyst_enabled => false,
       # :ccache_enabled => true
     )
+
+    # Some resource-bundle targets (RNSVG, AsyncStorage) hardcode old
+    # deployment targets in their podspec and don't inherit the platform
+    # declaration. Patch only those specific targets.
+    fix_targets = ['RNSVG-RNSVGFilters', 'AsyncStorage-AsyncStorage_resources']
+    installer.pods_project.targets.each do |target|
+      next unless fix_targets.include?(target.name)
+      target.build_configurations.each do |config|
+        config.build_settings['IPHONEOS_DEPLOYMENT_TARGET'] = '15.1'
+      end
+    end
   end
 end
