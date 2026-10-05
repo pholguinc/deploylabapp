@@ -1,8 +1,10 @@
 import React from 'react';
 import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import {
+  Award,
   CheckCircle2,
   Clock,
+  FileQuestion,
   Pause,
   Play,
   Star,
@@ -22,8 +24,15 @@ type Props = Readonly<{
   isPlaying: boolean;
   completedLessonIds: Record<string, boolean>;
   lessonCommentsMap: Record<string, CommentItem[]>;
-  lessonQuizMap: Record<string, { selected: number | null; submitted: boolean; isCorrect: boolean }>;
+  lessonQuizMap: Record<
+    string,
+    { selected: number | null; submitted: boolean; isCorrect: boolean }
+  >;
   onSelectLesson: (index: number) => void;
+  canTakeExam?: boolean;
+  hasPassedExam?: boolean;
+  onTakeExam?: () => void;
+  onViewCertificate?: () => void;
 }>;
 
 export default function CourseSyllabus({
@@ -36,12 +45,18 @@ export default function CourseSyllabus({
   lessonCommentsMap,
   lessonQuizMap,
   onSelectLesson,
+  canTakeExam,
+  hasPassedExam,
+  onTakeExam,
+  onViewCertificate,
 }: Props) {
   const { colors } = useTheme();
   const styles = getStyles(colors);
 
   // Track expanded modules. Open the first module by default.
-  const [expandedModules, setExpandedModules] = React.useState<Record<string, boolean>>(() => {
+  const [expandedModules, setExpandedModules] = React.useState<
+    Record<string, boolean>
+  >(() => {
     if (modules && modules.length > 0) {
       return { [modules[0].id]: true };
     }
@@ -51,7 +66,7 @@ export default function CourseSyllabus({
   const toggleModule = (moduleId: string) => {
     setExpandedModules(prev => ({
       ...prev,
-      [moduleId]: !prev[moduleId]
+      [moduleId]: !prev[moduleId],
     }));
   };
 
@@ -90,7 +105,11 @@ export default function CourseSyllabus({
       <View style={styles.section}>
         <View style={styles.syllabusTitleRow}>
           <Text style={styles.sectionTitle}>Módulos y Lecciones en Video</Text>
-          <Text style={styles.syllabusTotalBadge}>{allLessons.length} Clases</Text>
+          <View style={styles.syllabusBadgesRow}>
+            <Text style={styles.syllabusTotalBadge}>
+              {allLessons.length} Clases
+            </Text>
+          </View>
         </View>
 
         {modules.map(mod => {
@@ -100,129 +119,216 @@ export default function CourseSyllabus({
               <TouchableOpacity
                 style={[
                   styles.moduleHeaderRow,
-                  isExpanded ? styles.moduleHeaderRowExpanded : null
+                  isExpanded ? styles.moduleHeaderRowExpanded : null,
                 ]}
                 onPress={() => toggleModule(mod.id)}
-                activeOpacity={0.7}>
+                activeOpacity={0.7}
+              >
                 <Text style={styles.moduleHeader}>{mod.title}</Text>
-                <Text style={styles.moduleCount}>{mod.lessons.length} videos</Text>
+                <Text style={styles.moduleCount}>
+                  {mod.lessons.length} videos
+                </Text>
               </TouchableOpacity>
 
-              {isExpanded && mod.lessons.map(lesson => {
-                const globalIdx = allLessons.findIndex(l => l.id === lesson.id);
-                const isCurrent = globalIdx === activeLessonIndex;
-                const isDone = completedLessonIds[lesson.id];
-                const commentCount = (lessonCommentsMap[lesson.id] || []).length;
-                const quizState = lessonQuizMap[lesson.id];
+              {isExpanded &&
+                mod.lessons.map(lesson => {
+                  const globalIdx = allLessons.findIndex(
+                    l => l.id === lesson.id,
+                  );
+                  const isCurrent = globalIdx === activeLessonIndex;
+                  const isDone = completedLessonIds[lesson.id];
+                  const commentCount = (lessonCommentsMap[lesson.id] || [])
+                    .length;
+                  const quizState = lessonQuizMap[lesson.id];
 
-                let lessonIcon = (
-                  <Play size={13} color={colors.textMuted} style={styles.lessonIconPlay} />
-                );
-                if (isCurrent && isPlaying) {
-                  lessonIcon = <Pause size={15} color="#FFFFFF" fill="#FFFFFF" />;
-                } else if (isCurrent) {
-                  lessonIcon = (
+                  let lessonIcon = (
                     <Play
-                      size={15}
-                      color="#FFFFFF"
-                      fill="#FFFFFF"
+                      size={13}
+                      color={colors.textMuted}
                       style={styles.lessonIconPlay}
                     />
                   );
-                } else if (isDone) {
-                  lessonIcon = (
-                    <CheckCircle2 size={16} color={colors.accent} strokeWidth={2.5} />
-                  );
-                }
+                  if (isCurrent && isPlaying) {
+                    lessonIcon = (
+                      <Pause size={15} color="#FFFFFF" fill="#FFFFFF" />
+                    );
+                  } else if (isCurrent) {
+                    lessonIcon = (
+                      <Play
+                        size={15}
+                        color="#FFFFFF"
+                        fill="#FFFFFF"
+                        style={styles.lessonIconPlay}
+                      />
+                    );
+                  } else if (isDone) {
+                    lessonIcon = (
+                      <CheckCircle2
+                        size={16}
+                        color={colors.accent}
+                        strokeWidth={2.5}
+                      />
+                    );
+                  }
 
-                return (
-                  <TouchableOpacity
-                    key={lesson.id}
-                    style={[
-                      styles.lessonItemRow,
-                      isCurrent && styles.lessonItemRowActive,
-                    ]}
-                    onPress={() => onSelectLesson(globalIdx)}
-                    activeOpacity={0.75}>
-                    <View
+                  return (
+                    <TouchableOpacity
+                      key={lesson.id}
                       style={[
-                        styles.lessonIconBox,
-                        isCurrent && styles.lessonIconBoxActive,
-                        isDone && !isCurrent && styles.lessonIconBoxDone,
-                      ]}>
-                      {lessonIcon}
-                    </View>
-
-                    <View style={styles.lessonInfoCol}>
-                      <Text
+                        styles.lessonItemRow,
+                        isCurrent && styles.lessonItemRowActive,
+                      ]}
+                      onPress={() => onSelectLesson(globalIdx)}
+                      activeOpacity={0.75}
+                    >
+                      <View
                         style={[
-                          styles.lessonItemTitle,
-                          isCurrent && styles.lessonItemTitleActive,
+                          styles.lessonIconBox,
+                          isCurrent && styles.lessonIconBoxActive,
+                          isDone && !isCurrent && styles.lessonIconBoxDone,
                         ]}
-                        numberOfLines={2}>
-                        {lesson.title}
-                      </Text>
+                      >
+                        {lessonIcon}
+                      </View>
 
-                      <View style={styles.lessonMetaBar}>
-                        <View style={styles.lessonMetaGroup}>
-                          <Clock size={11} color={colors.textMuted} />
-                          <Text style={styles.lessonDuration}>{lesson.duration} min</Text>
-                        </View>
+                      <View style={styles.lessonInfoCol}>
+                        <Text
+                          style={[
+                            styles.lessonItemTitle,
+                            isCurrent && styles.lessonItemTitleActive,
+                          ]}
+                          numberOfLines={2}
+                        >
+                          {lesson.title}
+                        </Text>
 
-                        <View style={styles.badgeView}>
-                          <Paperclip size={10} color={colors.textMuted} />
-                          <Text style={styles.badgeViewText}>{lesson.resources.length}</Text>
-                        </View>
-
-                        <View style={styles.badgeView}>
-                          <MessageSquare size={10} color={colors.textMuted} />
-                          <Text style={styles.badgeViewText}>{commentCount}</Text>
-                        </View>
-
-                        {quizState?.submitted && (
-                          <Text
-                            style={[
-                              styles.lessonPerItemBadge,
-                              quizState.isCorrect ? styles.quizBadgeGreen : styles.quizBadgeRed,
-                            ]}>
-                            {quizState.isCorrect ? 'Quiz ✓' : 'Quiz ✗'}
-                          </Text>
-                        )}
-
-                        {isCurrent && (
-                          <View style={styles.activePill}>
-                            <Text style={styles.activePillText}>
-                              {isPlaying ? 'En video' : 'Seleccionada'}
+                        <View style={styles.lessonMetaBar}>
+                          <View style={styles.lessonMetaGroup}>
+                            <Clock size={11} color={colors.textMuted} />
+                            <Text style={styles.lessonDuration}>
+                              {lesson.duration} min
                             </Text>
                           </View>
-                        )}
+
+                          <View style={styles.badgeView}>
+                            <Paperclip size={10} color={colors.textMuted} />
+                            <Text style={styles.badgeViewText}>
+                              {lesson.resources.length}
+                            </Text>
+                          </View>
+
+                          <View style={styles.badgeView}>
+                            <MessageSquare size={10} color={colors.textMuted} />
+                            <Text style={styles.badgeViewText}>
+                              {commentCount}
+                            </Text>
+                          </View>
+
+                          {quizState?.submitted && (
+                            <Text
+                              style={[
+                                styles.lessonPerItemBadge,
+                                quizState.isCorrect
+                                  ? styles.quizBadgeGreen
+                                  : styles.quizBadgeRed,
+                              ]}
+                            >
+                              {quizState.isCorrect ? 'Quiz ✓' : 'Quiz ✗'}
+                            </Text>
+                          )}
+
+                          {isCurrent && (
+                            <View style={styles.activePill}>
+                              <Text style={styles.activePillText}>
+                                {isPlaying ? 'En video' : 'Seleccionada'}
+                              </Text>
+                            </View>
+                          )}
+                        </View>
                       </View>
-                    </View>
-                  </TouchableOpacity>
-                );
-              })}
+                    </TouchableOpacity>
+                  );
+                })}
             </View>
           );
         })}
+
+        {/* Final Exam Banner */}
+        {canTakeExam && (
+          <View
+            style={[
+              styles.examBannerCard,
+              hasPassedExam && styles.examBannerCardPassed,
+            ]}
+          >
+            <View style={styles.examBannerTop}>
+              <View
+                style={[
+                  styles.examBadgeIcon,
+                  hasPassedExam && styles.examBadgeIconPassed,
+                ]}
+              >
+                <Award
+                  size={26}
+                  color={hasPassedExam ? '#10B981' : colors.primary}
+                />
+              </View>
+              <View style={styles.examBannerTextWrap}>
+                <Text style={styles.examBannerTitle}>
+                  {hasPassedExam
+                    ? '¡Examen Final Aprobado!'
+                    : 'Examen Final de Certificación'}
+                </Text>
+                <Text style={styles.examBannerDesc}>
+                  {hasPassedExam
+                    ? 'Has superado el examen y obtenido tu certificación oficial.'
+                    : '¡Completaste todas las lecciones! Rinde el examen para certificar tus conocimientos.'}
+                </Text>
+              </View>
+            </View>
+
+            <TouchableOpacity
+              style={[
+                styles.examActionBtn,
+                hasPassedExam && styles.examActionBtnPassed,
+              ]}
+              onPress={hasPassedExam ? onViewCertificate : onTakeExam}
+              activeOpacity={0.8}
+            >
+              <Award size={18} color="#FFFFFF" />
+              <Text style={styles.examActionBtnText}>
+                {hasPassedExam
+                  ? 'Ver Certificado Oficial'
+                  : 'Rendir Examen Final'}
+              </Text>
+            </TouchableOpacity>
+          </View>
+        )}
       </View>
 
       {/* Description Section */}
       <View style={styles.section}>
         <Text style={styles.sectionTitle}>Acerca de este curso</Text>
         <Text style={styles.description}>{course.description}</Text>
-      </View>
 
-      {/* Features Highlights */}
-      {course.features && course.features.length > 0 && (
-        <View style={styles.featuresCard}>
-          {course.features.map((feature) => (
-            <View key={feature} style={styles.featureRow}>
-              <CheckCircle2 size={18} color={colors.accent} />
+        {/* Features Highlights List */}
+        <View style={styles.featuresList}>
+          {(Array.isArray(course.features) && course.features.length > 0
+            ? course.features
+            : [
+                'Acceso ilimitado a todas las lecciones y recursos',
+                'Laboratorios prácticos y despliegues en vivo',
+                'Evaluaciones interactivas por cada módulo',
+                'Certificado oficial de finalización verificado',
+              ]
+          ).map((feature, idx) => (
+            <View key={`${feature}-${idx}`} style={styles.featureRow}>
+              <CheckCircle2 size={18} color={colors.accent} strokeWidth={2.2} />
               <Text style={styles.featureText}>{feature}</Text>
             </View>
           ))}
         </View>
-      )}
+      </View>
     </View>
   );
 }
@@ -287,6 +393,29 @@ const getStyles = (colors: ThemeColors) =>
       paddingHorizontal: 8,
       paddingVertical: 3,
       borderRadius: 8,
+    },
+    syllabusBadgesRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 6,
+    },
+    completedTag: {
+      backgroundColor: '#10B981',
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 3,
+      paddingHorizontal: 8,
+      paddingVertical: 3,
+      borderRadius: 8,
+      shadowColor: '#10B981',
+      shadowOffset: { width: 0, height: 1 },
+      shadowOpacity: 0.25,
+      shadowRadius: 2,
+    },
+    completedTagText: {
+      fontSize: 11,
+      fontWeight: '700',
+      color: '#FFFFFF',
     },
     moduleCard: {
       backgroundColor: colors.surface,
@@ -427,6 +556,10 @@ const getStyles = (colors: ThemeColors) =>
       lineHeight: 20,
       marginTop: 6,
     },
+    featuresList: {
+      marginTop: 14,
+      gap: 12,
+    },
     featuresCard: {
       backgroundColor: colors.surface,
       borderWidth: 1,
@@ -445,5 +578,71 @@ const getStyles = (colors: ThemeColors) =>
       flex: 1,
       fontSize: 13,
       color: colors.text,
+    },
+    examBannerCard: {
+      backgroundColor: colors.surface,
+      borderWidth: 1.5,
+      borderColor: colors.primary,
+      borderRadius: 16,
+      padding: 16,
+      marginTop: 14,
+      gap: 14,
+      shadowColor: colors.primary,
+      shadowOffset: { width: 0, height: 4 },
+      shadowOpacity: 0.1,
+      shadowRadius: 8,
+      elevation: 3,
+    },
+    examBannerCardPassed: {
+      borderColor: '#10B981',
+      backgroundColor: '#10B98108',
+    },
+    examBannerTop: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 12,
+    },
+    examBadgeIcon: {
+      width: 48,
+      height: 48,
+      borderRadius: 14,
+      backgroundColor: colors.primary + '18',
+      justifyContent: 'center',
+      alignItems: 'center',
+    },
+    examBadgeIconPassed: {
+      backgroundColor: '#10B98120',
+    },
+    examBannerTextWrap: {
+      flex: 1,
+    },
+    examBannerTitle: {
+      fontSize: 15,
+      fontWeight: '800',
+      color: colors.text,
+      marginBottom: 3,
+    },
+    examBannerDesc: {
+      fontSize: 12,
+      color: colors.textMuted,
+      lineHeight: 17,
+    },
+    examActionBtn: {
+      backgroundColor: colors.primary,
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      paddingVertical: 12,
+      paddingHorizontal: 16,
+      borderRadius: 12,
+      gap: 8,
+    },
+    examActionBtnPassed: {
+      backgroundColor: '#10B981',
+    },
+    examActionBtnText: {
+      color: '#FFFFFF',
+      fontSize: 14,
+      fontWeight: '700',
     },
   });

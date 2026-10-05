@@ -38,6 +38,15 @@ export default function CourseShareModal({
   const shareUrl = `https://deploylab.dev/courses/${course.id}`;
   const shareMessage = `🚀 ¡Estoy aprendiendo "${course.title}" en DeployLab! Te comparto la ruta para dominar DevOps y Cloud:`;
 
+  let instructorName = 'Sin instructor';
+  if (course.instructor) {
+    if (typeof course.instructor === 'object') {
+      instructorName = `${course.instructor.name} ${course.instructor.lastname}`;
+    } else {
+      instructorName = course.instructor;
+    }
+  }
+
   const handleShareWhatsApp = () => {
     const text = `${shareMessage}\n${shareUrl}`;
     const deepLink = `whatsapp://send?text=${encodeURIComponent(text)}`;
@@ -145,7 +154,7 @@ export default function CourseShareModal({
                 {course.title}
               </Text>
               <Text style={styles.sharePreviewInstructor} numberOfLines={1}>
-                {course.instructor}
+                {instructorName}
               </Text>
             </View>
           </View>

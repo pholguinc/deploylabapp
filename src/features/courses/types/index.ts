@@ -10,7 +10,7 @@ export type Course = Readonly<{
   lessonsCount: number;
   studentsCount: number;
   rating: number;
-  instructor: string;
+  instructor: string | { id: string; name: string; lastname: string; email: string } | null;
   accentColor: string;
   imageUrl?: string;
   features?: string[];

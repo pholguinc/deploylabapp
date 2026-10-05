@@ -7,3 +7,5 @@ export { default as CourseSyllabus } from './components/CourseSyllabus';
 export { default as CourseResources } from './components/CourseResources';
 export { default as CourseComments } from './components/CourseComments';
 export { default as CourseQuiz } from './components/CourseQuiz';
+export { default as FinalExamModal } from './components/FinalExamModal';
+export { default as CertificateModal } from './components/CertificateModal';

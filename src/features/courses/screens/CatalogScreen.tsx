@@ -26,6 +26,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   BookOpen,
   Check,
+  CheckCircle2,
   Clock,
   Compass,
   Search,
@@ -69,6 +70,9 @@ export default function CatalogScreen({
   const [enrolledCourses, setEnrolledCourses] = useState<
     Record<string, boolean>
   >({});
+  const [completedCourses, setCompletedCourses] = useState<
+    Record<string, boolean>
+  >({});
   const imageRefs = useRef<Record<string, any>>({});
 
   const { courses, isLoading: apiLoading, refresh } = useCourses();
@@ -83,17 +87,53 @@ export default function CatalogScreen({
             courses.map(c =>
               coursesApi
                 .checkEnrollmentStatus(c.id)
-                .catch(() => ({ isEnrolled: false })),
+                .catch(() => ({ isEnrolled: false, progress: null })),
             ),
           );
           if (!mounted) return;
           const newEnrolled: Record<string, boolean> = {};
+          const newCompleted: Record<string, boolean> = {};
+
           courses.forEach((c, i) => {
-            if (results[i]?.isEnrolled) {
+            const res = results[i];
+            if (res?.isEnrolled) {
               newEnrolled[c.id] = true;
             }
+            if (
+              res?.progress?.status === 'COMPLETED' ||
+              (typeof res?.progress?.progress === 'number' &&
+                res.progress.progress >= 100)
+            ) {
+              newCompleted[c.id] = true;
+            }
           });
-          setEnrolledCourses(newEnrolled);
+
+          // Also check certificates for enrolled courses to ensure completed state
+          const enrolledToCheck = courses.filter(
+            c => newEnrolled[c.id] && !newCompleted[c.id],
+          );
+          if (enrolledToCheck.length > 0) {
+            const certResults = await Promise.all(
+              enrolledToCheck.map(c =>
+                coursesApi
+                  .getCertificate(c.id)
+                  .then(cert => !!cert)
+                  .catch(() => false),
+              ),
+            );
+            if (mounted) {
+              enrolledToCheck.forEach((c, idx) => {
+                if (certResults[idx]) {
+                  newCompleted[c.id] = true;
+                }
+              });
+            }
+          }
+
+          if (mounted) {
+            setEnrolledCourses(newEnrolled);
+            setCompletedCourses(newCompleted);
+          }
         } catch (err) {
           console.warn('Error fetching enrollments', err);
         }
@@ -338,6 +378,17 @@ export default function CatalogScreen({
         ) : (
           filteredCourses.map(course => {
             const isEnrolled = !!enrolledCourses[course.id];
+            const isCompleted = !!completedCourses[course.id];
+            
+            let instructorName = 'Sin instructor';
+            if (course.instructor) {
+              if (typeof course.instructor === 'object') {
+                instructorName = `${course.instructor.name} ${course.instructor.lastname}`;
+              } else {
+                instructorName = course.instructor;
+              }
+            }
+
             return (
               <View key={course.id} style={styles.courseCard}>
                 <View
@@ -368,8 +419,20 @@ export default function CatalogScreen({
                           {course.category}
                         </Text>
                       </View>
-                      <View style={styles.levelTag}>
-                        <Text style={styles.levelTagText}>{course.level}</Text>
+                      <View style={styles.tagsRightGroup}>
+                        {isCompleted && (
+                          <View style={styles.completedTag}>
+                            <CheckCircle2
+                              size={11}
+                              color="#FFFFFF"
+                              strokeWidth={2.6}
+                            />
+                            <Text style={styles.completedTagText}>Terminado</Text>
+                          </View>
+                        )}
+                        <View style={styles.levelTag}>
+                          <Text style={styles.levelTagText}>{course.level}</Text>
+                        </View>
                       </View>
                     </View>
                   </TouchableOpacity>
@@ -402,7 +465,7 @@ export default function CatalogScreen({
                     <View style={styles.instructorBlock}>
                       <Text style={styles.instructorLabel}>Instructor</Text>
                       <Text style={styles.instructorName}>
-                        {course.instructor}
+                        {instructorName}
                       </Text>
                     </View>
 
@@ -410,6 +473,7 @@ export default function CatalogScreen({
                       style={[
                         styles.enrollButton,
                         isEnrolled && styles.enrolledButton,
+                        isCompleted && styles.completedButton,
                       ]}
                       activeOpacity={0.8}
                       onPress={() => {
@@ -418,13 +482,18 @@ export default function CatalogScreen({
                     >
                       {isEnrolled ? (
                         <>
-                          <Check
+                          <CheckCircle2
                             size={14}
-                            color={colors.accent}
+                            color={isCompleted ? '#10B981' : colors.accent}
                             strokeWidth={2.5}
                           />
-                          <Text style={styles.enrolledButtonText}>
-                            Continuar curso
+                          <Text
+                            style={[
+                              styles.enrolledButtonText,
+                              isCompleted && styles.completedButtonText,
+                            ]}
+                          >
+                            {isCompleted ? 'Curso terminado' : 'Continuar curso'}
                           </Text>
                         </>
                       ) : (
@@ -612,6 +681,29 @@ const getStyles = (colors: ThemeColors) =>
       fontWeight: '700',
       color: colors.textOnPrimary,
     },
+    completedTag: {
+      backgroundColor: '#10B981',
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 3,
+      paddingHorizontal: spacing.sm,
+      paddingVertical: 3,
+      borderRadius: radius.sm,
+      shadowColor: '#10B981',
+      shadowOffset: { width: 0, height: 1 },
+      shadowOpacity: 0.3,
+      shadowRadius: 2,
+    },
+    completedTagText: {
+      fontSize: 11,
+      fontWeight: '700',
+      color: '#FFFFFF',
+    },
+    tagsRightGroup: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 6,
+    },
     courseTitle: {
       fontSize: 15,
       fontWeight: '700',
@@ -688,6 +780,13 @@ const getStyles = (colors: ThemeColors) =>
       color: colors.accent,
       fontSize: 12,
       fontWeight: '700',
+    },
+    completedButton: {
+      backgroundColor: '#10B9811A',
+      borderColor: '#10B98150',
+    },
+    completedButtonText: {
+      color: '#10B981',
     },
     emptyState: {
       alignItems: 'center',

@@ -28,6 +28,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   ArrowLeft,
   BookOpen,
+  CheckCircle2,
   FileQuestion,
   FileText,
   MessageSquare,
@@ -46,6 +47,9 @@ import CourseComments from '../components/CourseComments';
 import CourseQuiz, { type QuizState } from '../components/CourseQuiz';
 import CourseResources from '../components/CourseResources';
 import CourseShareModal from '../components/CourseShareModal';
+import CourseReviewModal from '../components/CourseReviewModal';
+import FinalExamModal from '../components/FinalExamModal';
+import CertificateModal from '../components/CertificateModal';
 import CourseSyllabus from '../components/CourseSyllabus';
 import CourseVideoPlayer from '../components/CourseVideoPlayer';
 import type {
@@ -55,7 +59,11 @@ import type {
   CourseResource,
 } from '../types';
 import type { CourseDetailProps } from '../../../shared/types/navigation';
-import coursesApi from '../services/coursesApi';
+import coursesApi, {
+  type CertificateData,
+  type ExamSubmitResponse,
+} from '../services/coursesApi';
+import { useAuthStore } from '../../auth/store/useAuthStore';
 
 const HERO_HEIGHT = 260;
 
@@ -70,6 +78,7 @@ export default function CourseDetailScreen({
   const insets = useSafeAreaInsets();
   const { colors, isDark } = useTheme();
   const styles = useMemo(() => getStyles(colors), [colors]);
+  const [courseData, setCourseData] = useState<Course>(course);
   const [isEnrolled, setIsEnrolled] = useState(
     route.params.isEnrolled ?? false,
   );
@@ -123,8 +132,52 @@ export default function CourseDetailScreen({
         ]);
         if (!mounted) return;
 
+        if (detail) {
+          const { modules: _detailModules, ...detailFields } = detail;
+          setCourseData(prev => ({
+            ...prev,
+            ...detailFields,
+            features:
+              detail.features && detail.features.length > 0
+                ? detail.features
+                : prev.features,
+          }));
+        }
+
         if (enrollment.isEnrolled) {
           setIsEnrolled(true);
+        }
+
+        if (
+          enrollment.progress?.status === 'COMPLETED' ||
+          (typeof enrollment.progress?.progress === 'number' &&
+            enrollment.progress.progress >= 100)
+        ) {
+          setHasPassedExam(true);
+        }
+
+        if (enrollment.progress && enrollment.progress.completedLessons) {
+          const completedMap: Record<string, boolean> = {};
+          enrollment.progress.completedLessons.forEach((id: string) => {
+            completedMap[id] = true;
+          });
+          setCompletedLessonIds(completedMap);
+        }
+
+        // Check Certificate / Exam Attempt
+        try {
+          const cert = await coursesApi.getCertificate(course.id);
+          if (cert && mounted) {
+            setCertificate(cert);
+            setHasPassedExam(true);
+          } else {
+            const attempt = await coursesApi.getLastExamAttempt(course.id);
+            if (attempt?.passed && mounted) {
+              setHasPassedExam(true);
+            }
+          }
+        } catch {
+          // ignore
         }
 
         if (detail.modules && detail.modules.length > 0) {
@@ -242,8 +295,14 @@ export default function CourseDetailScreen({
     {},
   );
 
-  // Social Share Modal State
+  // Modals State
   const [isShareModalVisible, setIsShareModalVisible] = useState(false);
+  const [isReviewModalVisible, setIsReviewModalVisible] = useState(false);
+  const [isFinalExamVisible, setIsFinalExamVisible] = useState(false);
+  const [isCertificateModalVisible, setIsCertificateModalVisible] =
+    useState(false);
+  const [certificate, setCertificate] = useState<CertificateData | null>(null);
+  const [hasPassedExam, setHasPassedExam] = useState(false);
   const [toastMessage, setToastMessage] = useState('');
 
   // Current lesson comments and quiz state
@@ -366,6 +425,113 @@ export default function CourseDetailScreen({
     if (activeLessonIndex < allLessons.length - 1) {
       handleSelectLesson(activeLessonIndex + 1);
     }
+  };
+
+  const handleMarkAsCompleted = async () => {
+    if (!activeLesson) return;
+
+    const isCurrentlyCompleted = !!completedLessonIds[activeLesson.id];
+    const newStatus = !isCurrentlyCompleted;
+
+    // Optimistic update
+    setCompletedLessonIds(old => {
+      const copy = { ...old };
+      if (newStatus) {
+        copy[activeLesson.id] = true;
+      } else {
+        delete copy[activeLesson.id];
+      }
+      return copy;
+    });
+
+    if (newStatus) {
+      showToast('Lección marcada como completada');
+      const newCompletedCount =
+        Object.keys(completedLessonIds).length +
+        (completedLessonIds[activeLesson.id] ? 0 : 1);
+      if (newCompletedCount >= allLessons.length) {
+        setIsFinalExamVisible(true);
+      } else {
+        handleNextLesson();
+      }
+    } else {
+      showToast('Lección desmarcada');
+    }
+
+    try {
+      await coursesApi.toggleLessonComplete(activeLesson.id);
+    } catch (error) {
+      // Revert on error
+      setCompletedLessonIds(old => {
+        const copy = { ...old };
+        if (isCurrentlyCompleted) {
+          copy[activeLesson.id] = true;
+        } else {
+          delete copy[activeLesson.id];
+        }
+        return copy;
+      });
+      showToast('Error al actualizar la lección');
+    }
+  };
+
+  const handleExamPassed = (examResult: ExamSubmitResponse) => {
+    setIsFinalExamVisible(false);
+    setHasPassedExam(true);
+    if (examResult.certificate) {
+      setCertificate(examResult.certificate);
+    }
+
+    // Disparar Webhook hacia el backend para notificar al Admin
+    const authUser = useAuthStore.getState().user;
+    coursesApi.notifyCourseCompletedWebhook({
+      courseId: course.id,
+      userId: authUser?.id || examResult.certificate?.userId || '',
+      studentName: authUser ? `${authUser.name || ''} ${authUser.lastname || ''}`.trim() : undefined,
+      studentEmail: authUser?.email,
+      courseTitle: course.title,
+      score: examResult.score,
+      certificateId: examResult.certificate?.id,
+    }).catch(err => {
+      console.warn('Error al disparar webhook de finalización:', err);
+    });
+
+    // Abrir modal de valoración y comentario
+    setIsReviewModalVisible(true);
+  };
+
+  const handleReviewSubmit = async (rating: number, comment: string) => {
+    setIsReviewModalVisible(false);
+    try {
+      await coursesApi.submitReview(course.id, { rating, comment });
+      showToast('¡Gracias por tu valoración!');
+    } catch {
+      showToast('Valoración enviada');
+    }
+
+    // Luego de la valoración, abrir el certificado para ver y descargar
+    if (!certificate) {
+      try {
+        const cert = await coursesApi.getCertificate(course.id);
+        if (cert) setCertificate(cert);
+      } catch {
+        // ignore
+      }
+    }
+    setIsCertificateModalVisible(true);
+  };
+
+  const handleReviewClose = async () => {
+    setIsReviewModalVisible(false);
+    if (!certificate) {
+      try {
+        const cert = await coursesApi.getCertificate(course.id);
+        if (cert) setCertificate(cert);
+      } catch {
+        // ignore
+      }
+    }
+    setIsCertificateModalVisible(true);
   };
 
   // Comment Handlers
@@ -531,7 +697,16 @@ export default function CourseDetailScreen({
       overflow: 'hidden',
       zIndex: 10,
     };
-  }, [progress, scrollY, startY, startX, startWidth, startHeight, SCREEN_WIDTH, cardLayout]);
+  }, [
+    progress,
+    scrollY,
+    startY,
+    startX,
+    startWidth,
+    startHeight,
+    SCREEN_WIDTH,
+    cardLayout,
+  ]);
 
   const tagsAnimatedStyle = useAnimatedStyle(() => ({
     opacity: interpolate(
@@ -599,10 +774,6 @@ export default function CourseDetailScreen({
     Math.max(0, currentTimeSec / (activeLesson?.durationSec || 1)),
   );
   const progressPercent = Math.round(progressFraction * 100);
-  const completedCount = Object.keys(completedLessonIds).length;
-  const overallCourseProgress = Math.round(
-    (completedCount / allLessons.length) * 100,
-  );
 
   const renderVideoOverlayContent = () => {
     if (!isEnrolled) {
@@ -739,17 +910,22 @@ export default function CourseDetailScreen({
             <View style={styles.categoryTag}>
               <Text style={styles.categoryTagText}>{course.category}</Text>
             </View>
-            <View style={styles.levelTag}>
-              <Text style={styles.levelTagText}>{course.level}</Text>
+            <View style={styles.tagsRightGroup}>
+              {hasPassedExam && (
+                <View style={styles.completedTag}>
+                  <CheckCircle2 size={11} color="#FFFFFF" strokeWidth={2.6} />
+                  <Text style={styles.completedTagText}>Terminado</Text>
+                </View>
+              )}
+              <View style={styles.levelTag}>
+                <Text style={styles.levelTagText}>{course.level}</Text>
+              </View>
             </View>
           </Animated.View>
         )}
 
         <Animated.View
-          style={[
-            StyleSheet.absoluteFill,
-            !isFullscreen && videoControlsStyle,
-          ]}
+          style={[StyleSheet.absoluteFill, !isFullscreen && videoControlsStyle]}
         >
           {!isFullscreen && (!isPlaying || !activeLesson) && (
             <ImageGradientOverlay />
@@ -854,6 +1030,36 @@ export default function CourseDetailScreen({
                   </TouchableOpacity>
                 )}
               </View>
+
+              <TouchableOpacity
+                style={[
+                  styles.activeLessonCompleteBtn,
+                  completedLessonIds[activeLesson.id] &&
+                    styles.activeLessonCompleteBtnActive,
+                ]}
+                onPress={handleMarkAsCompleted}
+                activeOpacity={0.8}
+              >
+                <ShieldCheck
+                  size={15}
+                  color={
+                    completedLessonIds[activeLesson.id]
+                      ? colors.primary
+                      : colors.textMuted
+                  }
+                />
+                <Text
+                  style={[
+                    styles.activeLessonCompleteBtnText,
+                    completedLessonIds[activeLesson.id] &&
+                      styles.activeLessonCompleteBtnTextActive,
+                  ]}
+                >
+                  {completedLessonIds[activeLesson.id]
+                    ? 'Lección completada'
+                    : 'Marcar como completado'}
+                </Text>
+              </TouchableOpacity>
             </View>
           )}
 
@@ -866,6 +1072,29 @@ export default function CourseDetailScreen({
               <Text style={styles.lessonScopeSubtitle} numberOfLines={1}>
                 {activeLesson.title}
               </Text>
+            </View>
+          )}
+
+          {/* Completed Course Status Banner */}
+          {hasPassedExam && !activeLesson && (
+            <View style={styles.courseCompletedBanner}>
+              <View style={styles.courseCompletedBannerLeft}>
+                <View style={styles.courseCompletedIconCircle}>
+                  <CheckCircle2 size={16} color="#10B981" strokeWidth={2.5} />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.courseCompletedBannerTitle}>
+                    ¡Has completado este curso!
+                  </Text>
+                  <Text style={styles.courseCompletedBannerDesc}>
+                    Examen final aprobado y certificado disponible
+                  </Text>
+                </View>
+              </View>
+              <View style={styles.completedTag}>
+                <CheckCircle2 size={11} color="#FFFFFF" strokeWidth={2.6} />
+                <Text style={styles.completedTagText}>Terminado</Text>
+              </View>
             </View>
           )}
 
@@ -1026,7 +1255,7 @@ export default function CourseDetailScreen({
           {/* TAB CONTENTS */}
           {activeTab === 'syllabus' && (
             <CourseSyllabus
-              course={course}
+              course={courseData}
               modules={modules}
               allLessons={allLessons}
               activeLessonIndex={activeLessonIndex}
@@ -1035,6 +1264,13 @@ export default function CourseDetailScreen({
               lessonCommentsMap={lessonCommentsMap}
               lessonQuizMap={lessonQuizMap}
               onSelectLesson={handleSelectLesson}
+              canTakeExam={
+                Object.keys(completedLessonIds).length >= allLessons.length &&
+                allLessons.length > 0
+              }
+              hasPassedExam={hasPassedExam}
+              onTakeExam={() => setIsFinalExamVisible(true)}
+              onViewCertificate={() => setIsCertificateModalVisible(true)}
             />
           )}
 
@@ -1145,6 +1381,14 @@ export default function CourseDetailScreen({
         >
           <ArrowLeft size={20} color="#FFFFFF" strokeWidth={2.4} />
         </TouchableOpacity>
+
+        {hasPassedExam && (
+          <View style={styles.floatingNavCompletedTag}>
+            <CheckCircle2 size={12} color="#FFFFFF" strokeWidth={2.6} />
+            <Text style={styles.floatingNavCompletedTagText}>Terminado</Text>
+          </View>
+        )}
+
         <TouchableOpacity
           style={styles.circleButton}
           onPress={() => setIsShareModalVisible(true)}
@@ -1201,6 +1445,29 @@ export default function CourseDetailScreen({
         course={course}
         imageSource={imageSource}
       />
+
+      <FinalExamModal
+        visible={isFinalExamVisible}
+        courseId={course.id}
+        courseTitle={course.title}
+        onClose={() => setIsFinalExamVisible(false)}
+        onExamPassed={handleExamPassed}
+      />
+
+      <CourseReviewModal
+        visible={isReviewModalVisible}
+        onClose={handleReviewClose}
+        onSubmit={handleReviewSubmit}
+        courseTitle={course.title}
+      />
+
+      <CertificateModal
+        visible={isCertificateModalVisible}
+        courseId={course.id}
+        courseTitle={course.title}
+        certificate={certificate}
+        onClose={() => setIsCertificateModalVisible(false)}
+      />
     </View>
   );
 }
@@ -1256,6 +1523,29 @@ const getStyles = (colors: ThemeColors) =>
       fontWeight: '700',
       color: colors.textOnPrimary,
     },
+    completedTag: {
+      backgroundColor: '#10B981',
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 3,
+      paddingHorizontal: spacing.sm,
+      paddingVertical: 3,
+      borderRadius: radius.sm,
+      shadowColor: '#10B981',
+      shadowOffset: { width: 0, height: 1 },
+      shadowOpacity: 0.3,
+      shadowRadius: 2,
+    },
+    completedTagText: {
+      fontSize: 11,
+      fontWeight: '700',
+      color: '#FFFFFF',
+    },
+    tagsRightGroup: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 6,
+    },
     studentsTag: {
       backgroundColor: 'rgba(255, 255, 255, 0.2)',
       paddingHorizontal: spacing.sm,
@@ -1285,6 +1575,64 @@ const getStyles = (colors: ThemeColors) =>
       justifyContent: 'center',
       borderWidth: 1,
       borderColor: 'rgba(255, 255, 255, 0.25)',
+    },
+    floatingNavCompletedTag: {
+      backgroundColor: '#10B981',
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 4,
+      paddingHorizontal: spacing.sm + 2,
+      paddingVertical: 5,
+      borderRadius: radius.full,
+      shadowColor: '#10B981',
+      shadowOffset: { width: 0, height: 2 },
+      shadowOpacity: 0.4,
+      shadowRadius: 4,
+      elevation: 4,
+    },
+    floatingNavCompletedTagText: {
+      fontSize: 12,
+      fontWeight: '800',
+      color: '#FFFFFF',
+      letterSpacing: 0.3,
+    },
+    courseCompletedBanner: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      backgroundColor: '#10B98112',
+      borderWidth: 1.5,
+      borderColor: '#10B98140',
+      borderRadius: radius.md,
+      paddingHorizontal: spacing.md,
+      paddingVertical: 12,
+      marginBottom: 16,
+      gap: 10,
+    },
+    courseCompletedBannerLeft: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 10,
+      flex: 1,
+    },
+    courseCompletedIconCircle: {
+      width: 32,
+      height: 32,
+      borderRadius: 16,
+      backgroundColor: '#10B98125',
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    courseCompletedBannerTitle: {
+      fontSize: 13,
+      fontWeight: '800',
+      color: colors.text,
+      marginBottom: 1,
+    },
+    courseCompletedBannerDesc: {
+      fontSize: 11,
+      color: colors.textMuted,
+      lineHeight: 14,
     },
     activeLessonCard: {
       backgroundColor: colors.surface,
@@ -1394,6 +1742,29 @@ const getStyles = (colors: ThemeColors) =>
     activeLessonNextBtnText: {
       fontSize: 12,
       fontWeight: '600',
+      color: colors.primary,
+    },
+    activeLessonCompleteBtn: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: 6,
+      paddingVertical: 10,
+      borderRadius: 10,
+      borderWidth: 1,
+      borderColor: colors.border,
+      marginTop: 8,
+    },
+    activeLessonCompleteBtnActive: {
+      backgroundColor: `${colors.primary}15`,
+      borderColor: colors.primary,
+    },
+    activeLessonCompleteBtnText: {
+      fontSize: 13,
+      fontWeight: '600',
+      color: colors.textMuted,
+    },
+    activeLessonCompleteBtnTextActive: {
       color: colors.primary,
     },
     lessonScopeBanner: {
