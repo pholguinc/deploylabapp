@@ -172,15 +172,15 @@ export default function FinalExamModal({
                   </View>
                   <Text style={styles.resultTitle}>¡Felicidades, aprobaste!</Text>
                   <Text style={styles.resultDescription}>
-                    Has superado exitosamente el examen final con una calificación de:
+                    Has superado exitosamente los dos componentes del examen final con un promedio consolidado de:
                   </Text>
                   <View style={styles.scorePill}>
                     <Text style={styles.scorePillText}>
-                      {result.score} / 20 puntos
+                      {result.score.toFixed(1)} / 20 puntos
                     </Text>
                   </View>
                   <Text style={styles.passNote}>
-                    Aprobado con {result.score >= 15 ? 'calificación sobresaliente' : 'éxito'}.
+                    Aprobado con promedio sobresaliente. Tu certificado oficial ha sido emitido.
                   </Text>
                   <TouchableOpacity
                     style={styles.actionBtnPrimary}
@@ -191,22 +191,45 @@ export default function FinalExamModal({
                     <ChevronRight size={18} color="#FFFFFF" />
                   </TouchableOpacity>
                 </>
-              ) : (
+              ) : result.attempt?.practicalStatus === 'PENDING_REVIEW' ? (
                 <>
-                  <View style={styles.failIconWrapper}>
-                    <XCircle size={64} color="#EF4444" />
+                  <View style={[styles.successIconWrapper, { backgroundColor: '#3B82F61A' }]}>
+                    <FileQuestion size={64} color="#3B82F6" />
                   </View>
-                  <Text style={styles.resultTitle}>No alcanzaste el puntaje</Text>
+                  <Text style={styles.resultTitle}>Examen Práctico en Revisión</Text>
                   <Text style={styles.resultDescription}>
-                    Tu puntaje obtenido fue de:
+                    Has completado la parte teórica con:
                   </Text>
-                  <View style={[styles.scorePill, styles.scorePillFail]}>
-                    <Text style={[styles.scorePillText, styles.scorePillTextFail]}>
-                      {result.score} / 20 puntos
+                  <View style={[styles.scorePill, { borderColor: '#3B82F6', backgroundColor: '#3B82F61A' }]}>
+                    <Text style={[styles.scorePillText, { color: '#3B82F6' }]}>
+                      Teórico: {(result.attempt?.theoreticalScore ?? result.score).toFixed(1)} / 20
                     </Text>
                   </View>
                   <Text style={styles.failNote}>
-                    Se requiere un mínimo de 15/20 para aprobar y obtener tu certificado.
+                    Tu informe práctico (PDF) fue recibido correctamente. El docente evaluará tu entrega y promediará ambas notas. Al alcanzar un promedio mínimo de 15/20, se emitirá automáticamente tu certificado.
+                  </Text>
+                  <TouchableOpacity
+                    style={styles.actionBtnPrimary}
+                    onPress={onClose}>
+                    <Text style={styles.actionBtnText}>Entendido</Text>
+                  </TouchableOpacity>
+                </>
+              ) : (
+                <>
+                  <View style={[styles.successIconWrapper, { backgroundColor: '#F59E0B1A' }]}>
+                    <FileQuestion size={64} color="#F59E0B" />
+                  </View>
+                  <Text style={styles.resultTitle}>Parte Teórica Completada</Text>
+                  <Text style={styles.resultDescription}>
+                    Tu calificación en el cuestionario teórico es de:
+                  </Text>
+                  <View style={[styles.scorePill, { borderColor: '#F59E0B', backgroundColor: '#F59E0B1A' }]}>
+                    <Text style={[styles.scorePillText, { color: '#F59E0B' }]}>
+                      {(result.attempt?.theoreticalScore ?? result.score).toFixed(1)} / 20 puntos
+                    </Text>
+                  </View>
+                  <Text style={styles.failNote}>
+                    Para obtener tu certificación debes presentar el <strong>informe técnico del examen práctico en formato PDF</strong>. El docente revisará tu informe y se calculará el promedio de ambos componentes (mínimo 15/20 para certificar).
                   </Text>
                   <View style={styles.failActionsRow}>
                     <TouchableOpacity
@@ -214,13 +237,13 @@ export default function FinalExamModal({
                       onPress={loadExam}>
                       <RotateCcw size={16} color={colors.text} />
                       <Text style={styles.actionBtnSecondaryText}>
-                        Reintentar
+                        Reintentar Teórico
                       </Text>
                     </TouchableOpacity>
                     <TouchableOpacity
                       style={[styles.actionBtnPrimary, { flex: 1 }]}
                       onPress={onClose}>
-                      <Text style={styles.actionBtnText}>Revisar Lecciones</Text>
+                      <Text style={styles.actionBtnText}>Continuar</Text>
                     </TouchableOpacity>
                   </View>
                 </>

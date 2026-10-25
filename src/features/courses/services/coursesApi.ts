@@ -359,6 +359,43 @@ export const coursesApi = {
     }
   },
 
+  async submitPracticalExam(
+    courseId: string,
+    file: { uri: string; name: string; type: string },
+  ): Promise<any> {
+    const ctrl = withTimeout(API_TIMEOUT_MS * 2);
+    const token = useAuthStore.getState().accessToken;
+    if (!token) throw new CoursesApiError('No estás autenticado', 401);
+
+    const formData = new FormData();
+    formData.append('file', file as any);
+
+    try {
+      const res = await fetch(`${BASE}/${courseId}/final-exam/practical-submit`, {
+        method: 'POST',
+        headers: {
+          Accept: 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: formData,
+        signal: ctrl.signal,
+      });
+
+      const json = await res.json().catch(() => null);
+      if (!res.ok) {
+        const msg = json?.message ?? `Error al subir examen práctico (${res.status})`;
+        throw new CoursesApiError(
+          Array.isArray(msg) ? msg.join(', ') : String(msg),
+          res.status,
+        );
+      }
+      return json?.data ?? json;
+    } catch (err: unknown) {
+      if (err instanceof CoursesApiError) throw err;
+      throw new CoursesApiError('Error al subir el examen práctico en PDF', 0);
+    }
+  },
+
   async getCertificate(courseId: string): Promise<CertificateData | null> {
     const ctrl = withTimeout(API_TIMEOUT_MS);
     const token = useAuthStore.getState().accessToken;
@@ -453,12 +490,17 @@ export const coursesApi = {
     studentEmail?: string;
     courseTitle?: string;
   }): Promise<any> {
+    // El backend exige sesión y valida el certificado del usuario autenticado
+    const token = useAuthStore.getState().accessToken;
+    if (!token) return null;
+
     try {
       const res = await fetch(`${ENV.BACKEND_URL}/webhooks/course-completed`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           Accept: 'application/json',
+          Authorization: `Bearer ${token}`,
         },
         body: JSON.stringify({
           event: 'course.completed',
@@ -489,6 +531,11 @@ export interface FinalExamData {
   id: string;
   courseId: string;
   title: string;
+  practicalTitle?: string | null;
+  practicalInstructions?: string | null;
+  practicalPdfUrl?: string | null;
+  practicalPdfName?: string | null;
+  practicalGuideUrl?: string | null;
   questions: FinalExamQuestion[];
 }
 
@@ -497,6 +544,7 @@ export interface ExamSubmitResponse {
   total: number;
   passed: boolean;
   certificate?: CertificateData | null;
+  attempt?: ExamAttemptData;
 }
 
 export interface CertificateData {
@@ -523,6 +571,17 @@ export interface ExamAttemptData {
   score: number;
   total: number;
   passed: boolean;
+  theoreticalScore?: number | null;
+  theoreticalTotal?: number | null;
+  theoreticalCorrect?: number | null;
+  theoreticalPassed?: boolean;
+  practicalFileUrl?: string | null;
+  practicalFileName?: string | null;
+  practicalSubmittedAt?: string | null;
+  practicalStatus?: string;
+  practicalScore?: number | null;
+  practicalFeedback?: string | null;
+  practicalGradedAt?: string | null;
   createdAt: string;
 }
 

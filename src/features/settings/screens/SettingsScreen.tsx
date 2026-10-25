@@ -22,7 +22,7 @@ import {
 } from 'lucide-react-native';
 import { useTheme } from '../../../shared/context/ThemeContext';
 import { radius, spacing, ThemeColors } from '../../../shared/theme';
-import { useAuthStore } from '../../auth';
+import { ROLE_LABELS, useAuthStore } from '../../auth';
 import SettingsSkeleton from '../components/SettingsSkeleton';
 
 type Props = Readonly<{
@@ -115,7 +115,7 @@ export default function SettingsScreen({ onLogout, isLoading: isLoadingProp }: R
 
   const displayName = user?.name || (user?.email ? user.email.split('@')[0] : 'Pedro Holguin');
   const displayEmail = user?.email || 'pedro@deploylab.io';
-  const displayRoles = user?.roles?.length ? user.roles.join(', ') : 'Estudiante DevOps';
+  const displayRoles = user?.role ? (ROLE_LABELS[user.role] ?? user.role) : 'Estudiante';
   const initials = displayName
     .split(' ')
     .filter(Boolean)

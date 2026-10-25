@@ -16,8 +16,6 @@ import {
   BookOpen,
   CheckCircle2,
   ChevronRight,
-  Flame,
-  FlaskConical,
   GitBranch,
   GraduationCap,
   Sparkles,
@@ -31,6 +29,8 @@ import { radius, spacing, ThemeColors } from '../../../shared/theme';
 import { useAuthStore } from '../../auth';
 import DashboardSkeleton from '../components/DashboardSkeleton';
 import RecentAchievements from '../components/RecentAchievements';
+import LearningIndicators from '../components/LearningIndicators';
+import { useMySummary } from '../hooks/useMySummary';
 
 type Props = Readonly<{
   onLogout: () => void;
@@ -148,42 +148,53 @@ export default function DashboardScreen({
     }, 900);
   }, []);
 
+  // KPIs reales del estudiante (GET /reports/me)
+  const { summary } = useMySummary();
   const kpis = useMemo(
     () => [
       {
-        icon: <Flame size={18} color={colors.accent} strokeWidth={2.2} />,
-        label: 'Racha de aprendizaje',
-        value: '12 días',
-        trend: 'up' as const,
-        trendLabel: '+3 vs. sem pasada',
+        icon: <GraduationCap size={18} color={colors.primary} strokeWidth={2.2} />,
+        label: 'Cursos completados',
+        value: summary ? `${summary.completedCourses}/${summary.enrolledCourses}` : '—',
+        trend: 'flat' as const,
+        trendLabel: summary ? `${summary.avgProgress}% avance prom.` : 'Cargando...',
+        accentColor: colors.primary,
+      },
+      {
+        icon: <BookOpen size={18} color={colors.accent} strokeWidth={2.2} />,
+        label: 'Lecciones completadas',
+        value: summary ? String(summary.completedLessons) : '—',
+        trend: summary && summary.completedLessons > 0 ? ('up' as const) : ('flat' as const),
+        trendLabel: 'En todos tus cursos',
         accentColor: colors.accent,
       },
       {
-        icon: <FlaskConical size={18} color={colors.primary} strokeWidth={2.2} />,
-        label: 'Labs completados',
-        value: '34/50',
-        trend: 'up' as const,
-        trendLabel: '+5 este mes',
-        accentColor: colors.primary,
-      },
-      {
-        icon: <GraduationCap size={18} color={colors.primary} strokeWidth={2.2} />,
-        label: 'Cursos completados',
-        value: '5/12',
-        trend: 'flat' as const,
-        trendLabel: 'Sin cambios',
-        accentColor: colors.primary,
+        icon: <Award size={18} color="#f59e0b" strokeWidth={2.2} />,
+        label: 'Certificados',
+        value: summary ? String(summary.certificates) : '—',
+        trend: summary && summary.certificates > 0 ? ('up' as const) : ('flat' as const),
+        trendLabel: summary
+          ? `${summary.passedExams}/${summary.examAttempts} exámenes aprobados`
+          : 'Cargando...',
+        accentColor: '#f59e0b',
       },
       {
         icon: <Zap size={18} color={colors.accent} strokeWidth={2.2} />,
-        label: 'Puntos XP',
-        value: '2,450',
-        trend: 'up' as const,
-        trendLabel: '+180 sem',
+        label: 'Nota promedio',
+        value: summary?.avgExamScore != null ? `${summary.avgExamScore}/20` : '—',
+        trend:
+          summary?.avgExamScore == null
+            ? ('flat' as const)
+            : summary.avgExamScore >= 15
+              ? ('up' as const)
+              : ('down' as const),
+        trendLabel: summary?.pendingPracticalReviews
+          ? `${summary.pendingPracticalReviews} práctico(s) en revisión`
+          : 'Examen final',
         accentColor: colors.accent,
       },
     ],
-    [colors],
+    [colors, summary],
   );
 
   const recentActivity = useMemo(
@@ -271,6 +282,18 @@ export default function DashboardScreen({
         {kpis.map(kpi => (
           <KpiCard key={kpi.label} {...kpi} />
         ))}
+      </Animated.View>
+
+      {/* Indicadores de las fichas de registro (IND-01, IND-02, IND-03) */}
+      <Animated.View
+        style={[
+          styles.section,
+          {
+            opacity: kpisOpacity,
+            transform: [{ translateY: kpisTranslateY }],
+          },
+        ]}>
+        <LearningIndicators />
       </Animated.View>
 
       {/* Continue Learning */}

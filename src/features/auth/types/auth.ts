@@ -3,13 +3,23 @@ export type LoginRequest = Readonly<{
   password: string;
 }>;
 
-export type UserRole = 'SUPERADMIN' | 'ADMIN' | 'USER' | string;
+export type UserRole = 'SUPERADMIN' | 'ADMIN' | 'DOCENTE' | 'USER' | string;
+
+/** Etiqueta legible del rol que devuelve el backend. */
+export const ROLE_LABELS: Record<string, string> = {
+  SUPERADMIN: 'Superadministrador',
+  ADMIN: 'Administrador',
+  DOCENTE: 'Docente',
+  USER: 'Estudiante',
+};
 
 export type AuthUser = Readonly<{
   id: string;
   email: string;
   name?: string | null;
-  roles: readonly UserRole[];
+  lastname?: string | null;
+  // El backend envía un único rol por usuario
+  role: UserRole;
 }>;
 
 export type AuthTokens = Readonly<{
