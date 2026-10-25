@@ -9,7 +9,10 @@ export interface IndicatorHistoryItem {
   value: number | null;
 }
 
-/** Indicador de las fichas de registro calculado con las evaluaciones del estudiante. */
+/**
+ * Indicador de las fichas de registro. El backend calcula el valor del
+ * estudiante aplicando la fórmula a sus evaluaciones en la app.
+ */
 export interface MyIndicator {
   code: IndicatorCode;
   number: number;

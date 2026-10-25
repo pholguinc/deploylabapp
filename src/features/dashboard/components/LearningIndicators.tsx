@@ -38,11 +38,13 @@ const INDICATOR_UI: Record<
   },
 };
 
+function formatNumber(value: number, unit: MyIndicator['unit']): string {
+  return unit === '%' ? `${value}%` : `${value} min`;
+}
+
 function formatValue(indicator: MyIndicator): string {
   if (indicator.value === null) return 'Pendiente';
-  return indicator.unit === '%'
-    ? `${indicator.value}%`
-    : `${indicator.value} min`;
+  return formatNumber(indicator.value, indicator.unit);
 }
 
 // ─── Card ─────────────────────────────────────────────────────────────────────
@@ -79,6 +81,8 @@ function IndicatorCard({
           {formatValue(indicator)}
         </Text>
       </View>
+
+      {hasValue && <Text style={styles.postTestLabel}>Tu resultado</Text>}
 
       {hasValue && indicator.unit === '%' && (
         <ProgressBar
@@ -228,6 +232,15 @@ const getStyles = (colors: ThemeColors) =>
     detail: {
       fontSize: 12,
       color: colors.textMuted,
+    },
+    postTestLabel: {
+      fontSize: 10,
+      fontWeight: '700',
+      letterSpacing: 0.5,
+      textTransform: 'uppercase',
+      color: colors.textMuted,
+      alignSelf: 'flex-end',
+      marginTop: -spacing.xs,
     },
     formula: {
       fontSize: 11,
